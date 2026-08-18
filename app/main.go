@@ -9,6 +9,21 @@ import (
 	"strings"
 )
 
+// StatusCode defines a custom type for status code enum.
+type HttpStatus int
+
+const (
+	OK          HttpStatus = 200
+	BAD_REQUEST HttpStatus = 400
+	NOT_FOUND   HttpStatus = 404
+)
+
+type HttpResponse struct {
+	Version string
+	Status  HttpStatus
+	Body    string
+}
+
 type HttpRequest struct {
 	Method  string
 	Path    string
@@ -39,12 +54,13 @@ func main() {
 	}
 
 	if req.Path == "/" {
-		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		conn.Write(OKResponse())
 	} else {
-		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		conn.Write(NotFoundResponse())
 	}
 }
 
+/** Request helper functions  */
 func ParseRequest(r io.Reader) (*HttpRequest, error) {
 	buffer := make([]byte, 1024)
 
@@ -75,4 +91,55 @@ func ParseRequest(r io.Reader) (*HttpRequest, error) {
 	}
 
 	return req, nil
+}
+
+/** Http Status helper functions  */
+func (s HttpStatus) ReasonPhrase() string {
+	switch s {
+	case OK:
+		return "OK"
+	case BAD_REQUEST:
+		return "Bad Request"
+	case NOT_FOUND:
+		return "Not Found"
+	default:
+		return "Unknown"
+	}
+}
+
+/** Response helper functions  */
+func OKResponse(body ...string) []byte {
+	defaultBody := ""
+	if len(body) > 0 {
+		defaultBody = body[0]
+	}
+
+	response := HttpResponse{
+		Version: "HTTP/1.1",
+		Status:  OK,
+		Body:    defaultBody,
+	}
+
+	return response.ToJSON()
+}
+
+func NotFoundResponse() []byte {
+	response := HttpResponse{
+		Version: "HTTP/1.1",
+		Status:  NOT_FOUND,
+	}
+
+	return response.ToJSON()
+}
+
+func (r *HttpResponse) ToJSON() []byte {
+	statusLine := fmt.Sprintf("%s %d %s\r\n\r\n", r.Version, r.Status, r.Status.ReasonPhrase())
+
+	headers := ""
+	if r.Body != "" {
+		headers += "Content-Type: text/plain\r\n"
+		headers += fmt.Sprintf("Content-Length: %d\r\n", len(r.Body))
+	}
+
+	return []byte(statusLine + headers + "\r\n" + r.Body)
 }
