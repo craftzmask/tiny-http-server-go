@@ -43,12 +43,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
+	defer l.Close()
 
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+
+		go handleClient(conn)
+	}
+}
+
+func handleClient(conn net.Conn) {
 	req, err := ParseRequest(conn)
 	if err != nil {
 		fmt.Println("[ParseRequest]: ", err.Error())
@@ -65,6 +73,8 @@ func main() {
 	} else {
 		conn.Write(NotFoundResponse())
 	}
+
+	defer conn.Close()
 }
 
 /** Request helper functions  */
