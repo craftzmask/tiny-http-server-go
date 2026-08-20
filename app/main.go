@@ -29,6 +29,7 @@ type HttpRequest struct {
 	Method  string
 	Path    string
 	Version string
+	Headers map[string]string
 }
 
 // Ensures gofmt doesn't remove the "net" and "os" imports above (feel free to remove this!)
@@ -58,6 +59,9 @@ func main() {
 		conn.Write(OKResponse())
 	} else if strings.Contains(req.Path, "/echo") {
 		conn.Write(OKResponse(req.GetEchoContent()))
+	} else if strings.Contains(req.Path, "/user-agent") {
+		headerValue := req.Headers["user-agent"]
+		conn.Write(OKResponse(headerValue))
 	} else {
 		conn.Write(NotFoundResponse())
 	}
@@ -87,10 +91,19 @@ func ParseRequest(r io.Reader) (*HttpRequest, error) {
 		return nil, fmt.Errorf("Cannot parse the request line: %v", requestLineParts)
 	}
 
+	headers := make(map[string]string)
+	for i := 1; i < len(lines); i++ {
+		line := strings.Split(lines[i], ": ")
+		if len(line) == 2 {
+			headers[strings.ToLower(line[0])] = line[1]
+		}
+	}
+
 	req := &HttpRequest{
 		Method:  requestLineParts[0],
 		Path:    requestLineParts[1],
 		Version: requestLineParts[2],
+		Headers: headers,
 	}
 
 	return req, nil
