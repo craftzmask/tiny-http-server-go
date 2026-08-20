@@ -21,6 +21,7 @@ const (
 type HttpResponse struct {
 	Version string
 	Status  HttpStatus
+	Headers map[string]string
 	Body    string
 }
 
@@ -55,6 +56,8 @@ func main() {
 
 	if req.Path == "/" {
 		conn.Write(OKResponse())
+	} else if strings.Contains(req.Path, "/echo") {
+		conn.Write(OKResponse(req.GetEchoContent()))
 	} else {
 		conn.Write(NotFoundResponse())
 	}
@@ -91,6 +94,16 @@ func ParseRequest(r io.Reader) (*HttpRequest, error) {
 	}
 
 	return req, nil
+}
+
+func (r *HttpRequest) GetEchoContent() string {
+	echoPath := "/echo/"
+	idx := strings.Index(r.Path, echoPath)
+	if idx == -1 {
+		return ""
+	}
+
+	return r.Path[(idx + len(echoPath)):]
 }
 
 /** Http Status helper functions  */
@@ -133,7 +146,7 @@ func NotFoundResponse() []byte {
 }
 
 func (r *HttpResponse) ToJSON() []byte {
-	statusLine := fmt.Sprintf("%s %d %s\r\n\r\n", r.Version, r.Status, r.Status.ReasonPhrase())
+	statusLine := fmt.Sprintf("%s %d %s\r\n", r.Version, r.Status, r.Status.ReasonPhrase())
 
 	headers := ""
 	if r.Body != "" {
