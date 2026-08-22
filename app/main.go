@@ -14,6 +14,7 @@ type HttpStatus int
 
 const (
 	OK          HttpStatus = 200
+	CREATED     HttpStatus = 201
 	BAD_REQUEST HttpStatus = 400
 	NOT_FOUND   HttpStatus = 404
 )
@@ -30,6 +31,7 @@ type HttpRequest struct {
 	Path    string
 	Version string
 	Headers map[string]string
+	Body    string
 }
 
 // Ensures gofmt doesn't remove the "net" and "os" imports above (feel free to remove this!)
@@ -79,20 +81,35 @@ func handleClient(conn net.Conn) {
 		headerValue := req.Headers["user-agent"]
 		conn.Write(OKResponse(headerValue))
 	} else if strings.Contains(req.Path, "/files") {
-		fileName := req.GetFileName()
-		content, err := os.ReadFile(os.Args[2] + fileName)
-		if err != nil {
-			conn.Write(NotFoundResponse())
-			os.Exit(1)
-		}
+		filePath := os.Args[2] + req.GetFileName()
 
-		resp := HttpResponse{
-			Version: "HTTP/1.1",
-			Status:  OK,
-			Headers: map[string]string{
-				"Content-Type": "application/octet-stream",
-			},
-			Body: string(content),
+		var resp HttpResponse
+		if req.Method == "POST" {
+			err := os.WriteFile(filePath, []byte(req.Body), 0644)
+			if err != nil {
+				fmt.Println("Cannot create a new file")
+				os.Exit(1)
+			}
+
+			resp = HttpResponse{
+				Version: "HTTP/1.1",
+				Status:  CREATED,
+			}
+		} else {
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				conn.Write(NotFoundResponse())
+				os.Exit(1)
+			}
+
+			resp = HttpResponse{
+				Version: "HTTP/1.1",
+				Status:  OK,
+				Headers: map[string]string{
+					"Content-Type": "application/octet-stream",
+				},
+				Body: string(content),
+			}
 		}
 
 		conn.Write(resp.ToJSON())
@@ -127,11 +144,14 @@ func ParseRequest(r io.Reader) (*HttpRequest, error) {
 		return nil, fmt.Errorf("Cannot parse the request line: %v", requestLineParts)
 	}
 
+	var body string
 	headers := make(map[string]string)
 	for i := 1; i < len(lines); i++ {
 		line := strings.Split(lines[i], ": ")
 		if len(line) == 2 {
 			headers[strings.ToLower(line[0])] = line[1]
+		} else if lines[i] != "" {
+			body = lines[i]
 		}
 	}
 
@@ -140,6 +160,7 @@ func ParseRequest(r io.Reader) (*HttpRequest, error) {
 		Path:    requestLineParts[1],
 		Version: requestLineParts[2],
 		Headers: headers,
+		Body:    body,
 	}
 
 	return req, nil
@@ -170,6 +191,8 @@ func (s HttpStatus) ReasonPhrase() string {
 	switch s {
 	case OK:
 		return "OK"
+	case CREATED:
+		return "Created"
 	case BAD_REQUEST:
 		return "Bad Request"
 	case NOT_FOUND:
