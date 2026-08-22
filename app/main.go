@@ -37,6 +37,14 @@ var _ = net.Listen
 var _ = os.Exit
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--directory" {
+		err := os.MkdirAll(os.Args[2], 0755)
+		if err != nil {
+			fmt.Println("Cannot create directory")
+			os.Exit(1)
+		}
+	}
+
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
@@ -70,6 +78,24 @@ func handleClient(conn net.Conn) {
 	} else if strings.Contains(req.Path, "/user-agent") {
 		headerValue := req.Headers["user-agent"]
 		conn.Write(OKResponse(headerValue))
+	} else if strings.Contains(req.Path, "/files") {
+		fileName := req.GetFileName()
+		content, err := os.ReadFile(os.Args[2] + fileName)
+		if err != nil {
+			conn.Write(NotFoundResponse())
+			os.Exit(1)
+		}
+
+		resp := HttpResponse{
+			Version: "HTTP/1.1",
+			Status:  OK,
+			Headers: map[string]string{
+				"Content-Type": "application/octet-stream",
+			},
+			Body: string(content),
+		}
+
+		conn.Write(resp.ToJSON())
 	} else {
 		conn.Write(NotFoundResponse())
 	}
@@ -129,6 +155,16 @@ func (r *HttpRequest) GetEchoContent() string {
 	return r.Path[(idx + len(echoPath)):]
 }
 
+func (r *HttpRequest) GetFileName() string {
+	filePath := "/files/"
+	idx := strings.Index(r.Path, filePath)
+	if idx == -1 {
+		return ""
+	}
+
+	return r.Path[(idx + len(filePath)):]
+}
+
 /** Http Status helper functions  */
 func (s HttpStatus) ReasonPhrase() string {
 	switch s {
@@ -153,7 +189,10 @@ func OKResponse(body ...string) []byte {
 	response := HttpResponse{
 		Version: "HTTP/1.1",
 		Status:  OK,
-		Body:    defaultBody,
+		Headers: map[string]string{
+			"Content-Type": "text/plain",
+		},
+		Body: defaultBody,
 	}
 
 	return response.ToJSON()
@@ -172,8 +211,11 @@ func (r *HttpResponse) ToJSON() []byte {
 	statusLine := fmt.Sprintf("%s %d %s\r\n", r.Version, r.Status, r.Status.ReasonPhrase())
 
 	headers := ""
+	for header, value := range r.Headers {
+		headers += fmt.Sprintf("%s: %s\r\n", header, value)
+	}
+
 	if r.Body != "" {
-		headers += "Content-Type: text/plain\r\n"
 		headers += fmt.Sprintf("Content-Length: %d\r\n", len(r.Body))
 	}
 
